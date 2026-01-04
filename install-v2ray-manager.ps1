@@ -1,3 +1,6 @@
+# =============================
+# V2Ray Manager Installer – Windows
+# =============================
 $ErrorActionPreference = "Stop"
 
 $BASE = "C:\v2ray-manager"
@@ -7,7 +10,7 @@ $PUBLIC_DIR = "$BASE\public"
 
 Write-Host "=== V2Ray Manager Installer (Node.js / Windows) ==="
 
-# 1️⃣ نصب Node.js اگر وجود ندارد
+# --- Install Node.js if missing ---
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Host "Installing Node.js..."
     $nodeUrl = "https://nodejs.org/dist/v20.11.1/node-v20.11.1-x64.msi"
@@ -16,18 +19,18 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Start-Process msiexec.exe -ArgumentList "/i $nodeInstaller /quiet /norestart" -Wait
 }
 
-# 2️⃣ ساخت پوشه‌ها
+# --- Create directories ---
 Write-Host "Creating folders..."
 New-Item -ItemType Directory -Force -Path $V2RAY_DIR, $CONFIG_DIR, $PUBLIC_DIR | Out-Null
 Set-Location $BASE
 
-# 3️⃣ دانلود V2Ray
+# --- Download V2Ray ---
 Write-Host "Downloading V2Ray..."
 $v2rayZip = "$env:TEMP\v2ray.zip"
 Invoke-WebRequest "https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-windows-64.zip" -OutFile $v2rayZip
 Expand-Archive $v2rayZip -DestinationPath $V2RAY_DIR -Force
 
-# 4️⃣ package.json
+# --- package.json ---
 @"
 {
   "name": "v2ray-manager",
@@ -39,7 +42,7 @@ Expand-Archive $v2rayZip -DestinationPath $V2RAY_DIR -Force
 }
 "@ | Out-File "$BASE\package.json" -Encoding utf8
 
-# 5️⃣ server.js
+# --- server.js ---
 @"
 const express = require('express');
 const fs = require('fs');
@@ -51,7 +54,6 @@ const PORT = 3000;
 
 const V2RAY = './v2ray/v2ray.exe';
 const CONFIGS = './configs';
-
 let processRef = null;
 
 app.use(express.json());
@@ -60,7 +62,6 @@ app.use(express.static('public'));
 app.post('/config/vmess', (req, res) => {
   const { port } = req.body;
   const uuid = uuidv4();
-
   const config = {
     inbounds: [{
       port: Number(port),
@@ -69,8 +70,7 @@ app.post('/config/vmess', (req, res) => {
     }],
     outbounds: [{ protocol: 'freedom' }]
   };
-
-  fs.writeFileSync(\`\${CONFIGS}/vmess-\${port}.json\`, JSON.stringify(config, null, 2));
+  fs.writeFileSync(`${CONFIGS}/vmess-${port}.json`, JSON.stringify(config, null, 2));
   res.json({ port, uuid });
 });
 
@@ -80,7 +80,7 @@ app.get('/configs', (req, res) => {
 
 app.post('/start', (req, res) => {
   if (processRef) return res.json({ error: 'Already running' });
-  processRef = spawn(V2RAY, ['-config', \`\${CONFIGS}/\${req.body.config}\`]);
+  processRef = spawn(V2RAY, ['-config', `${CONFIGS}/${req.body.config}`]);
   res.json({ success: true });
 });
 
@@ -93,39 +93,52 @@ app.post('/stop', (req, res) => {
 app.listen(PORT, () => console.log('Panel: http://localhost:' + PORT));
 "@ | Out-File "$BASE\server.js" -Encoding utf8
 
-# 6️⃣ index.html
+# --- index.html ---
 @"
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
-<head><meta charset="UTF-8"><title>V2Ray Manager</title></head>
+<html lang='fa' dir='rtl'>
+<head>
+<meta charset='UTF-8'>
+<title>V2Ray Manager</title>
+</head>
 <body>
-<h2>ساخت VMESS</h2>
-<input id="port" placeholder="پورت">
-<button onclick="create()">ساخت</button>
+
+<h2>ساخت کانفیگ VMESS</h2>
+<input id='port' placeholder='پورت'>
+<button onclick='create()'>ساخت</button>
+
 <hr>
-<button onclick="load()">لیست کانفیگ‌ها</button>
-<ul id="list"></ul>
+
+<h2>لیست کانفیگ‌ها</h2>
+<ul id='list'></ul>
+<button onclick='load()'>بارگذاری</button>
 
 <script>
 async function create() {
   const port = document.getElementById('port').value;
-  const r = await fetch('/config/vmess',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port})});
-  alert(JSON.stringify(await r.json()));
+  const res = await fetch('/config/vmess',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ port })
+  });
+  alert(JSON.stringify(await res.json()));
 }
 async function load() {
-  const r = await fetch('/configs');
-  document.getElementById('list').innerHTML = (await r.json()).map(x=>'<li>'+x+'</li>').join('');
+  const res = await fetch('/configs');
+  document.getElementById('list').innerHTML =
+    (await res.json()).map(x=>'<li>'+x+'</li>').join('');
 }
 </script>
+
 </body>
 </html>
 "@ | Out-File "$PUBLIC_DIR\index.html" -Encoding utf8
 
-# 7️⃣ نصب پکیج‌ها
+# --- Install npm packages ---
 Write-Host "Installing npm packages..."
 npm install express uuid
 
-# 8️⃣ اجرا
+# --- Start server ---
 Write-Host "Starting server..."
 Start-Process node -ArgumentList "server.js"
 
